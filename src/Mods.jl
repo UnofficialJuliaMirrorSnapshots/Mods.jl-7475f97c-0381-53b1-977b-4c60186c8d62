@@ -2,7 +2,7 @@ module Mods
 
 import Base.isequal, Base.==, Base.+, Base.-, Base.*
 import Base.inv, Base./, Base.^
-import Base.hash, Base.adjoint, Base.show
+import Base.hash, Base.show
 
 export Mod
 export isequal, ==, +, -, *
@@ -13,26 +13,16 @@ export hash, CRT
 `Mod(v,m)` creates a modular number in mod `m` with value `v%m`.
 `Mod(m)` is equivalent to `Mod(0,m)`.
 """
-struct Mod
-    val::Integer
-    mod::Integer
-    function Mod(a::Integer, m::Integer)
+struct Mod{T<:Integer}
+    val::T
+    mod::T
+    function Mod(a::S, m::T) where {S<:Integer, T<:Integer}
         if m < 1
             error("Modulus must be at least 1")
         end
 
-        typeA = typeof(a)
-        typeM = typeof(m)
-
-        if typeA == typeM
-            return new(mod(a,m),m)
-        end
-
-        aa = a + zero(typeA) + zero(typeM)
-        mm = m + zero(typeA) + zero(typeM)
-
-        aa = mod(aa,mm)
-        new(aa,mm)
+        a,m = promote(a,m)
+        return new{typeof(a)}(mod(a,m),m)
     end
 end
 
@@ -58,21 +48,32 @@ end
 # Easy arithmetic
 function +(x::Mod, y::Mod)
     modcheck(x,y)
-    return Mod(x.val+y.val, x.mod)
+    s,flag = Base.add_with_overflow(x.val,y.val)
+    if !flag
+        return Mod(x.val+y.val, x.mod)
+    end
+    s = widen(x.val) + widen(y.val)    # add with added precision
+    s = mod(s,x.mod)                   # reduce by modulus
+    return Mod(oftype(x.mod,s),x.mod)  # return with proper type
 end
 
-function -(x::Mod,y::Mod)
-    modcheck(x,y)
-    return Mod(x.val-y.val, x.mod)
-end
 
 function -(x::Mod)
     return Mod(-x.val, x.mod)
 end
 
+-(x::Mod,y::Mod) = x + (-y)
+
+
 function *(x::Mod, y::Mod)
     modcheck(x,y)
-    return Mod(x.val*y.val, x.mod)
+    p,flag = Base.mul_with_overflow(x.val,y.val)
+    if !flag
+        return Mod(x.val*y.val, x.mod)
+    end
+    p = widemul(x.val, y.val)         # multipy with added precision
+    p = mod(p,x.mod)                  # reduce by the modulus
+    return Mod(oftype(x.mod,p),x.mod) # return with proper type
 end
 
 # Division stuff
@@ -94,8 +95,7 @@ function inv(x::Mod)
 end
 
 # Typing shortcut for inv(x)
-adjoint(x::Mod) = inv(x)
-
+# adjoint(x::Mod)
 
 function /(x::Mod, y::Mod)
     modcheck(x,y)
@@ -116,14 +116,14 @@ end
 
 # Operations with Integers
 
-+(x::Mod, k::Integer) = Mod(x.val+k, x.mod)
-+(k::Integer, x::Mod) = Mod(x.val+k, x.mod)
++(x::Mod, k::Integer) = Mod(k,x.mod)+x
++(k::Integer, x::Mod) = x+k
 
--(x::Mod, k::Integer) = Mod(x.val-k, x.mod)
--(k::Integer, x::Mod) = Mod(k-x.val, x.mod)
+-(x::Mod, k::Integer) = x + (-k)
+-(k::Integer, x::Mod) = (-x) + k
 
-*(x::Mod, k::Integer) = Mod(k*x.val, x.mod)
-*(k::Integer, x::Mod) = Mod(k*x.val, x.mod)
+*(x::Mod, k::Integer) = Mod(k,x.mod) * x
+*(k::Integer, x::Mod) = x*k
 
 /(x::Mod, k::Integer) = x / Mod(k, x.mod)
 /(k::Integer, x::Mod) = Mod(k, x.mod) / x
